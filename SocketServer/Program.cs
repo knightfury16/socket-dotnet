@@ -6,28 +6,35 @@ public class Program
 {
     private static int _clientId = 0;
 
+    // For unix socket the end point is a file descriptor
+    private static string SocketPath = "/tmp/dotnet_socket"; // this is like a meet up point for client to come and connect
+
     static void Main(string[] args)
     {
-        const string socketPath = "/tmp/dotnet_socket"; // this is like an address, that client can recognize and connect to
+        // var socket = CreateUnixSocket(); // uncomment this to create unix socket, need same modificatin in client
+        var socket = CreateTcpSocket();
 
-        if (File.Exists(socketPath))
-        {
-            File.Delete(socketPath);
-        }
-
-        var socket = new Socket(AddressFamily.InterNetwork, SocketType.Stream, ProtocolType.Tcp);
         try
         {
-            var endPoint = new UnixDomainSocketEndPoint(socketPath);
-            IPAddress localAddress = IPAddress.Loopback;
-            int port = 8888;
-            var localEndPoint = new IPEndPoint(localAddress, port);
+            EndPoint endPoint = default!; // socket is binded  to endpoint
 
-            socket.Bind(localEndPoint);
-            Console.WriteLine($"Socket bound to {socketPath}");
+            if (socket.AddressFamily == AddressFamily.Unix)
+            {
+                endPoint = GetUnixSocketEndPoint();
+            }
+            else
+            {
+                endPoint = GetTcpSocketEndPoint();
+            }
 
-            socket.Listen(5);
-            Console.WriteLine("Multi client server socket listing for client...");
+            socket.Bind(endPoint);
+            Console.WriteLine("Successfully binded socket to endpoint");
+
+            // Accepting connection take time, backlog value is setting the max queue size
+            // while socket is accepting connection from client.
+            // Exceeding this throws error
+            socket.Listen(5); // 5 here is the backlog value
+            Console.WriteLine("Multi client server socket listening for client...");
 
             while (true)
             {
@@ -60,9 +67,9 @@ public class Program
         {
             socket.Close();
 
-            if (File.Exists(socketPath))
+            if (File.Exists(SocketPath))
             {
-                File.Delete(socketPath);
+                File.Delete(SocketPath);
             }
 
             Console.WriteLine("Server closed and cleaned up");
@@ -113,4 +120,48 @@ public class Program
             Console.WriteLine($"Cleanly disposed client socket with id {clientId} thread");
         }
     }
+
+    private static Socket CreateUnixSocket()
+    {
+        var socket = new Socket(AddressFamily.Unix, SocketType.Stream, ProtocolType.Unspecified);
+
+        return socket;
+    }
+
+    private static Socket CreateTcpSocket()
+    {
+
+        var socket = new Socket(AddressFamily.InterNetwork, SocketType.Stream, ProtocolType.Tcp);
+
+        return socket;
+    }
+
+    private static EndPoint GetTcpSocketEndPoint()
+    {
+        // For Tcp we need a pair of address, the IP and Port
+        // Via this address client can connect to the server
+        IPAddress localAddress = IPAddress.Loopback; // local ip
+        int port = 8888;
+
+        var ipEndPoint = new IPEndPoint(localAddress, port);
+
+        return ipEndPoint;
+    }
+
+
+    private static EndPoint GetUnixSocketEndPoint()
+    {
+
+        // if previously exist delete the file
+        if (File.Exists(SocketPath))
+        {
+            File.Delete(SocketPath);
+        }
+
+        var endPoint = new UnixDomainSocketEndPoint(SocketPath);
+
+        return endPoint;
+    }
+
+
 }
