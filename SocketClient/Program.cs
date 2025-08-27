@@ -15,6 +15,8 @@ class Program
         // var socket = CreateUnixSocket(); //Uncomment this line to create unix socket, need same modification on server
         var socket = CreateTcpSocket();
 
+        Console.WriteLine($"Successfully created socket of type {socket.AddressFamily}.");
+
         try
         {
             EndPoint endPoint = default!;
