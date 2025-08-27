@@ -7,25 +7,33 @@ namespace LSystem;
 class Program
 {
 
+    private static string SocketPath = "/tmp/dotnet_socket"; // this file path must match server
+
     static void Main(string[] args)
     {
-        const string socketPath = "/tmp/dotnet_socket";
 
-        Socket clientSocket = new Socket(AddressFamily.InterNetwork, SocketType.Stream, ProtocolType.Tcp);
+        // var socket = CreateUnixSocket(); //Uncomment this line to create unix socket, need same modification on server
+        var socket = CreateTcpSocket();
 
         try
         {
-            var endPoint = new UnixDomainSocketEndPoint(socketPath);
-            var port = 8888;
-            IPAddress localAddress = IPAddress.Loopback;
-            var serverEndPoint = new IPEndPoint(localAddress, port);
+            EndPoint endPoint = default!;
 
-            clientSocket.Connect(serverEndPoint);
-            Console.WriteLine("Connected to server...");
+            if (socket.AddressFamily == AddressFamily.Unix)
+            {
+                endPoint = GetUnixEndPoint();
+            }
+            else
+            {
+                endPoint = GetTcpEndPoint();
+            }
+
+            socket.Connect(endPoint);
+            Console.WriteLine($"Successfully connected to server on endPoint {endPoint.ToString()}...");
 
             Byte[] buffer = new Byte[1024];
 
-            Console.WriteLine("Write any message and press enter to send");
+            Console.WriteLine("Write any message(quit to exit) and press enter.");
 
             while (true)
             {
@@ -39,33 +47,68 @@ class Program
 
                 Byte[] message = Encoding.UTF8.GetBytes(input);
 
-                clientSocket.Send(message);
+                socket.Send(message);
 
 
                 // server response
-                int bytesRead = clientSocket.Receive(buffer);
+                int bytesRead = socket.Receive(buffer);
 
                 string response = Encoding.UTF8.GetString(buffer, 0, bytesRead);
 
-                Console.WriteLine($"Recieved From server::: {response}");
+                Console.WriteLine($"Recieved From server: {response}");
             }
         }
         catch (Exception ex)
         {
             Console.WriteLine($"Connection Error::: {ex}");
-
         }
         finally
         {
-            clientSocket.Close();
+            socket.Close();
             Console.WriteLine("Close client successfully");
-
         }
 
     }
 
+    private static EndPoint GetTcpEndPoint()
+    {
+        // This is where i am connecting to.For client a random port is assigned by OS
+        var port = 8888;
+        IPAddress localAddress = IPAddress.Loopback;
+        var endPoint = new IPEndPoint(localAddress, port);
 
+        return endPoint;
+    }
 
-
-
+    private static EndPoint GetUnixEndPoint()
+    {
+        var endPoint = new UnixDomainSocketEndPoint(SocketPath);
+        return endPoint;
+    }
+    private static Socket CreateTcpSocket()
+    {
+        try
+        {
+            Socket socket = new Socket(AddressFamily.InterNetwork, SocketType.Stream, ProtocolType.Tcp);
+            return socket;
+        }
+        catch (System.Exception ex)
+        {
+            Console.WriteLine($"Socket Creation Failed. {ex}");
+            throw;
+        }
+    }
+    private static object CreateUnixSocket()
+    {
+        try
+        {
+            Socket socket = new Socket(AddressFamily.Unix, SocketType.Stream, ProtocolType.Unspecified);
+            return socket;
+        }
+        catch (System.Exception ex)
+        {
+            Console.WriteLine($"Socket Creation Failed. {ex}");
+            throw;
+        }
+    }
 }
