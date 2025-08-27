@@ -14,6 +14,8 @@ public class Program
         // var socket = CreateUnixSocket(); // uncomment this to create unix socket, need same modificatin in client
         var socket = CreateTcpSocket();
 
+        Console.WriteLine($"Successfully created socket of type {socket.AddressFamily}.");
+
         try
         {
             EndPoint endPoint = default!; // socket is binded  to endpoint
@@ -28,7 +30,7 @@ public class Program
             }
 
             socket.Bind(endPoint);
-            Console.WriteLine("Successfully binded socket to endpoint");
+            Console.WriteLine($"Successfully binded socket to endpoint {endPoint.ToString()}");
 
             // Accepting connection take time, backlog value is setting the max queue size
             // while socket is accepting connection from client.
@@ -123,17 +125,30 @@ public class Program
 
     private static Socket CreateUnixSocket()
     {
-        var socket = new Socket(AddressFamily.Unix, SocketType.Stream, ProtocolType.Unspecified);
-
-        return socket;
+        try
+        {
+            var socket = new Socket(AddressFamily.Unix, SocketType.Stream, ProtocolType.Unspecified);
+            return socket;
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"Socket Creation Failed. {ex}");
+            throw;
+        }
     }
 
     private static Socket CreateTcpSocket()
     {
-
-        var socket = new Socket(AddressFamily.InterNetwork, SocketType.Stream, ProtocolType.Tcp);
-
-        return socket;
+        try
+        {
+            var socket = new Socket(AddressFamily.InterNetwork, SocketType.Stream, ProtocolType.Tcp);
+            return socket;
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"Socket Creation Failed. {ex}");
+            throw;
+        }
     }
 
     private static EndPoint GetTcpSocketEndPoint()
