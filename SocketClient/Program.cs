@@ -113,4 +113,32 @@ class Program
             throw;
         }
     }
+
+    public static string GenerateLongMessage()
+    {
+        const int messageSize = 1024;
+
+        var sb = new StringBuilder(messageSize);
+
+        sb.Append("GET /user/login HTTP/1.1");
+        sb.Append($"Content-Length: {messageSize}");
+        sb.Append("Content-Type: text/plain");
+
+        var postion = sb.Length;
+        var remaining = messageSize - sb.Length;
+
+        for (int i = 0; i < remaining; i++)
+        {
+            if (remaining % 500 == 0)
+            {
+                sb.Append($"Position: {postion + i}");
+            }
+            else
+            {
+                sb.Append($"Hello from postion: {i}");
+            }
+        }
+
+        return sb.ToString();
+    }
 }
