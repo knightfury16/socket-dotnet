@@ -1,7 +1,11 @@
-﻿using System.IO.Pipelines;
+﻿using System.Buffers;
+using System.Diagnostics;
+using System.IO.Pipelines;
 using System.Net;
 using System.Net.Sockets;
 using System.Text;
+using System.Threading.Tasks;
+using SocketServer;
 
 public class Program
 {
@@ -79,11 +83,10 @@ public class Program
         }
     }
 
-    private static void HandleClient(Socket clientSocket, int clientId)
+    private static async Task HandleClient(Socket clientSocket, int clientId)
     {
         Console.WriteLine($"Client Handle with client ID {clientId} started");
 
-        Byte[] buffer = new Byte[1024];
         Pipe pipe = new();
 
         // Need to fill the pipe writer from where the reader can read
@@ -92,13 +95,44 @@ public class Program
         try
         {
             // This is where i read the data
+            //
+            PipeReader pipeReader = pipe.Reader;
+
+            while (true)
+            {
+                Console.WriteLine("Pipe Reader waiting for data");
+                ReadResult result = await pipeReader.ReadAsync();
+                Console.WriteLine("Pipe Reader got data");
+
+                ReadOnlySequence<byte> buffer = result.Buffer;
 
 
+                if (TryParseHttpRequest(buffer, out HttpRequest httpRequest))
+                {
+                    Console.WriteLine("Parsing HttpRequest Success!!!");
+                    ProcessRequest(httpRequest);
+
+                    int _ = await clientSocket.SendAsync(Encoding.UTF8.GetBytes("Received and processed request successfully"));
+
+                    // close of the write is request parsing is successfull
+                    await pipeReader.CompleteAsync();
+                    break;
+                }
+                else
+                {
+                    Console.WriteLine("Not complete data reading again");
+                    pipeReader.AdvanceTo(buffer.Start, buffer.End);
+                }
+
+                if (result.IsCompleted)
+                {
+                    break;
+                }
+            }
         }
         catch (Exception ex)
         {
             Console.WriteLine($"Client {clientId} Error:::{ex}");
-
         }
         finally
         {
@@ -107,8 +141,111 @@ public class Program
         }
     }
 
+    private static void ProcessRequest(HttpRequest httpRequest)
+    {
+        Console.WriteLine("The Request I Received is");
+
+        Console.WriteLine($"HttpMethod : {httpRequest.Method}");
+        Console.WriteLine($"HttpPath : {httpRequest.Path}");
+        Console.WriteLine($"HttpVersion : {httpRequest.Version}");
+
+
+        Console.WriteLine("All Header values are: ");
+
+        foreach (var item in httpRequest.Headers)
+        {
+            Console.WriteLine($"Header Key: {item.Key}, Header value: {item.Value}");
+        }
+    }
+
+    private static bool TryParseHttpRequest(ReadOnlySequence<byte> buffer, out HttpRequest httpRequest)
+    {
+        const byte ByteCR = (byte)'\r';
+        const byte ByteLF = (byte)'\n';
+        ReadOnlySpan<byte> RequestLineDelimiters = [ByteLF, 0];
+
+        httpRequest = new HttpRequest();
+
+        SequenceReader<byte> reader = new(buffer);
+
+        //parse requestline
+        if (!reader.TryReadTo(out ReadOnlySequence<byte> requestLine, [ByteCR, ByteLF], advancePastDelimiter: false))
+        {
+            // not enought data till now
+            return false;
+        }
+
+        var foundDelimeter = reader.TryRead(out byte next);
+
+        // Assertion
+        Debug.Assert(foundDelimeter);
+        Debug.Assert(requestLine.Length > 0);
+
+        ParseRequestLine(requestLine, ref httpRequest);
+
+        //parse headers
+        if (!reader.TryReadTo(out ReadOnlySequence<byte> headers, [ByteCR, ByteLF, ByteCR, ByteLF], advancePastDelimiter: true))
+        {
+            return false;
+        }
+
+        Debug.Assert(headers.Length > 0);
+
+        ParseHeaders(headers, ref httpRequest);
+
+        return true;
+    }
+
+    private static void ParseHeaders(ReadOnlySequence<byte> headers, ref HttpRequest httpRequest)
+    {
+        const byte ByteCR = (byte)'\r';
+        const byte ByteLF = (byte)'\n';
+
+        var reader = new SequenceReader<byte>(headers);
+
+        while (true)
+        {
+            if (!reader.TryReadTo(out ReadOnlySpan<byte> fieldLine, [ByteCR, ByteLF], true))
+            {
+                break;
+            }
+
+            if (fieldLine.Length == 0)
+            {
+                Console.WriteLine("Field line length is zero");
+            }
+
+            var indexOfColon = fieldLine.IndexOf((byte)':');
+
+            if (indexOfColon < 0) break;
+
+            var headerName = fieldLine[..indexOfColon];
+            var headerValue = fieldLine[(indexOfColon + 1)..];
+
+            httpRequest.Headers.Add(Encoding.UTF8.GetString(headerName), Encoding.UTF8.GetString(headerValue).Trim());
+        }
+    }
+    private static void ParseRequestLine(ReadOnlySequence<byte> requestLine, ref HttpRequest httpRequest)
+    {
+
+        var requestLineString = Encoding.UTF8.GetString(requestLine.FirstSpan);
+
+        var requstLineSplit = requestLineString.Split(" ");
+
+        Debug.Assert(requstLineSplit.Length == 3);
+
+        string method = requstLineSplit[0];
+        var path = requstLineSplit[1];
+        var version = requstLineSplit[2];
+
+        httpRequest.Method = method;
+        httpRequest.Path = path;
+        httpRequest.Version = version;
+    }
+
     private static async Task FillPipeAsync(Socket clientSocket, PipeWriter writer)
     {
+        Console.WriteLine("Started filling pipe");
         int minimumBufferSize = 1024;
 
         try
@@ -131,6 +268,7 @@ public class Program
                 if (result.IsCompleted)
                 {
                     //reader called off the is complete
+                    Console.WriteLine("[Writer] closing the writer os IsCompleted true");
                     break;
                 }
             }
