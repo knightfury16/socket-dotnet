@@ -1,4 +1,5 @@
-﻿using System.Net;
+﻿using System.IO.Pipelines;
+using System.Net;
 using System.Net.Sockets;
 using System.Text;
 
@@ -83,33 +84,16 @@ public class Program
         Console.WriteLine($"Client Handle with client ID {clientId} started");
 
         Byte[] buffer = new Byte[1024];
+        Pipe pipe = new();
+
+        // Need to fill the pipe writer from where the reader can read
+        Task filling = FillPipeAsync(clientSocket, pipe.Writer); // this is running in parallel, not awaiting
 
         try
         {
-            while (true)
-            {
-                var bufferSize = clientSocket.Receive(buffer);
+            // This is where i read the data
 
-                if (bufferSize == 0)
-                {
-                    Console.WriteLine($"Client with Id {clientId} disconnected safely");
-                    break;
-                }
-                if (bufferSize < 0)
-                {
-                    Console.WriteLine("Disconnecting client");
-                    break;
-                }
 
-                var message = Encoding.UTF8.GetString(buffer, 0, bufferSize);
-
-                Console.WriteLine($"Server Recieved: {message}");
-
-                //echo back the message
-                Byte[] response = Encoding.UTF8.GetBytes(message);
-                clientSocket.Send(response);
-
-            }
         }
         catch (Exception ex)
         {
@@ -122,6 +106,46 @@ public class Program
             Console.WriteLine($"Cleanly disposed client socket with id {clientId} thread");
         }
     }
+
+    private static async Task FillPipeAsync(Socket clientSocket, PipeWriter writer)
+    {
+        int minimumBufferSize = 1024;
+
+        try
+        {
+            while (true)
+            {
+                Memory<byte> writerBuffer = writer.GetMemory(minimumBufferSize);
+                int bytesRecived = await clientSocket.ReceiveAsync(writerBuffer, SocketFlags.None);
+
+                if (bytesRecived == 0)
+                {
+                    Console.WriteLine("TCP Stream finish, closing the socket connection");
+                    break;
+                }
+
+                writer.Advance(bytesRecived);
+
+                FlushResult result = await writer.FlushAsync();
+
+                if (result.IsCompleted)
+                {
+                    //reader called off the is complete
+                    break;
+                }
+            }
+        }
+        catch (Exception ex)
+        {
+            throw new Exception($"Error filling pipe. Exception: {ex}");
+        }
+        finally
+        {
+            await writer.CompleteAsync();
+        }
+
+    }
+
 
     private static Socket CreateUnixSocket()
     {
