@@ -1,6 +1,7 @@
 ﻿using System.Net;
 using System.Net.Sockets;
 using System.Text;
+using System.Threading.Tasks;
 
 namespace LSystem;
 
@@ -9,7 +10,7 @@ class Program
 
     private static string SocketPath = "/tmp/dotnet_socket"; // this file path must match server
 
-    static void Main(string[] args)
+    static async Task Main(string[] args)
     {
 
         // var socket = CreateUnixSocket(); //Uncomment this line to create unix socket, need same modification on server
@@ -35,30 +36,16 @@ class Program
 
             Byte[] buffer = new Byte[1024];
 
-            Console.WriteLine("Write any message(quit to exit) and press enter.");
+            var dataSent = await socket.SendAsync(Encoding.UTF8.GetBytes(GenerateLongMessage()));
 
-            while (true)
-            {
-                Console.Write("> ");
-                var input = Console.ReadLine();
+            Console.WriteLine($"I have successfully sent {dataSent}");
 
-                if (input == "quit" || input is null)
-                {
-                    break;
-                }
+            // server response
+            int bytesRead = socket.Receive(buffer);
 
-                Byte[] message = Encoding.UTF8.GetBytes(input);
+            string response = Encoding.UTF8.GetString(buffer, 0, bytesRead);
 
-                socket.Send(message);
-
-
-                // server response
-                int bytesRead = socket.Receive(buffer);
-
-                string response = Encoding.UTF8.GetString(buffer, 0, bytesRead);
-
-                Console.WriteLine($"Recieved From server: {response}");
-            }
+            Console.WriteLine($"Recieved From server: {response}");
         }
         catch (Exception ex)
         {
@@ -120,9 +107,11 @@ class Program
 
         var sb = new StringBuilder(messageSize);
 
-        sb.Append("GET /user/login HTTP/1.1");
-        sb.Append($"Content-Length: {messageSize}");
-        sb.Append("Content-Type: text/plain");
+        sb.Append("GET /user/login HTTP/1.1\r\n");
+        sb.Append($"Content-Length: {messageSize}\r\n");
+        sb.Append("Content-Type: text/plain\r\n");
+        sb.Append("Authorization: Bearer 2312323\r\n");
+        sb.Append("Authorization: Bearer 2312323\r\n\r\n");
 
         var postion = sb.Length;
         var remaining = messageSize - sb.Length;
