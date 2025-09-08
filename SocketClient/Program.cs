@@ -110,7 +110,6 @@ class Program
         sb.Append("GET /user/login HTTP/1.1\r\n");
         sb.Append($"Content-Length: {messageSize}\r\n");
         sb.Append("Content-Type: text/plain\r\n");
-        sb.Append("Authorization: Bearer 2312323\r\n");
         sb.Append("Authorization: Bearer 2312323\r\n\r\n");
 
         var postion = sb.Length;
