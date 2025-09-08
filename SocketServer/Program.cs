@@ -255,6 +255,12 @@ public class Program
                 Memory<byte> writerBuffer = writer.GetMemory(minimumBufferSize);
                 int bytesRecived = await clientSocket.ReceiveAsync(writerBuffer, SocketFlags.None);
 
+                Console.WriteLine("Received Raw data from socket");
+
+                byte[] receivedData = writerBuffer.Span[..bytesRecived].ToArray();
+
+                Console.WriteLine(Encoding.UTF8.GetString(receivedData));
+
                 if (bytesRecived == 0)
                 {
                     Console.WriteLine("TCP Stream finish, closing the socket connection");
